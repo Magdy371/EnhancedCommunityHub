@@ -1,0 +1,107 @@
+﻿@* @page
+@model LoginModel
+@inject IHttpContextAccessor HttpContextAccessor
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Community Hub</title>
+    <link rel="stylesheet" href="~/css/login.css" />
+</head>
+<body>
+    <div class="login-container">
+        <img src="~/images/Login.jpeg" alt="Logo" class="logo">
+        <h2>Sign In</h2>
+        <form method="post">
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input id="email" name="LoginRequest.Email" type="email" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input id="password" name="LoginRequest.Password" type="password" required>
+            </div>
+            <button type="submit" class="btn-submit">Sign In</button>
+        </form>
+        @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+        {
+                <div class="error-message">@Model.ErrorMessage</div>
+        }
+    </div>
+</body>
+</html>
+ *@
+
+@page
+@model LoginModel
+@{
+    ViewData["Title"] = "Login";
+}
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-4">
+            <h2 class="text-center mb-4">Login</h2>
+            <form method="post" class="needs-validation" novalidate>
+                <div class="mb-3">
+                    <label for="email" class="form-label">Email</label>
+                    <input type="email" id="email" name="email" class="form-control" asp-for="LoginRequest.Email" required />
+                    <span class="text-danger" asp-validation-for="LoginRequest.Email"></span>
+                </div>
+                <div class="mb-3">
+                    <label for="password" class="form-label">Password</label>
+                    <input type="password" id="password" name="password" class="form-control" asp-for="LoginRequest.Password" required />
+                    <span class="text-danger" asp-validation-for="LoginRequest.Password"></span>
+                </div>
+                <button type="submit" class="btn btn-primary w-100" disabled="@Model.IsLoading">
+                    @if (Model.IsLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    }
+                    Login
+                </button>
+            </form>
+            @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+            {
+                <div class="alert alert-danger mt-3">@Model.ErrorMessage</div>
+            }
+        </div>
+    </div>
+</div>
+@section Scripts {
+    <script>
+        async function handleLogin() {
+            const email = document.getElementById("email").value;
+            const password = document.getElementById("password").value;
+
+            const loginRequest = {
+                email: email,
+                password: password
+            };
+
+            // Send login request to the backend
+            const response = await fetch('/api/users/auth/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(loginRequest)
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                // Store the JWT token in localStorage for future use
+                localStorage.setItem('AuthToken', data.token);
+                // Optionally, store in sessionStorage for this session
+                sessionStorage.setItem('AuthToken', data.token);
+                // Redirect to the Dashboard or home page
+                window.location.href = '/Dashboard';
+            } else {
+                console.log("Invalid login credentials");
+                alert('Login failed');
+            }
+        }
+    </script>
+}
