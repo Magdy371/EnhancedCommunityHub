@@ -1,28 +1,46 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 
 namespace CommunityHub.Client.Pages
 {
-    public class ProfileModel(IHttpClientFactory clientFactory) : PageModel
+#nullable disable
+    public class ProfileModel : PageModel
     {
-        private readonly HttpClient _httpClient = clientFactory.CreateClient("CommunityHubAPI");
+        private readonly HttpClient _httpClient;
+        public ProfileModel(IHttpClientFactory clientFactory)
+        {
+            _httpClient = clientFactory.CreateClient("CommunityHubAPI");
+        }
 
         [BindProperty]
-        public UserProfile Profile { get; set; } = new UserProfile();
+        public ProfileDto Profile { get; set; } = new ProfileDto();
 
-        public string SuccessMessage { get; set; } = string.Empty;
         public string ErrorMessage { get; set; } = string.Empty;
+        public string SuccessMessage { get; set; } = string.Empty;
 
         public async Task OnGetAsync()
         {
             try
             {
-                // Fetch user profile (replace with your user ID or session logic)
-                var userId = HttpContext.Session.GetInt32("UserId");
-                if (userId != null)
+                var token = HttpContext.Session.GetString("AuthToken");
+                if (string.IsNullOrEmpty(token))
                 {
-                    Profile = await _httpClient.GetFromJsonAsync<UserProfile>($"api/users/{userId}");
+                    Response.Redirect("/Login");
+                    return;
+                }
+
+                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                var response = await _httpClient.GetAsync("api/users/profile");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Profile = await response.Content.ReadFromJsonAsync<ProfileDto>();
+                }
+                else
+                {
+                    ErrorMessage = "Failed to load profile information.";
                 }
             }
             catch (Exception ex)
@@ -35,33 +53,38 @@ namespace CommunityHub.Client.Pages
         {
             try
             {
-                // Update user profile (replace with your user ID or session logic)
-                var userId = HttpContext.Session.GetInt32("UserId");
-                if (userId != null)
+                var token = HttpContext.Session.GetString("AuthToken");
+                if (string.IsNullOrEmpty(token))
                 {
-                    var response = await _httpClient.PutAsJsonAsync($"api/users/{userId}", Profile);
-
-                    if (response.IsSuccessStatusCode)
-                    {
-                        SuccessMessage = "Profile updated successfully!";
-                        return Page();
-                    }
+                    Response.Redirect("/Login");
+                    return Page();
                 }
-                ErrorMessage = "Failed to update profile.";
-                return Page();
+
+                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                var response = await _httpClient.PutAsJsonAsync("api/users/profile", Profile);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    SuccessMessage = "Profile updated successfully.";
+                }
+                else
+                {
+                    ErrorMessage = "Failed to update profile.";
+                }
             }
             catch (Exception ex)
             {
                 ErrorMessage = $"An error occurred: {ex.Message}";
-                return Page();
             }
-        }
 
-        public class UserProfile
-        {
-            public string Name { get; set; }
-            public string Email { get; set; }
-            public string Password { get; set; } // Leave empty if not updating
+            return Page();
         }
+    }
+
+    public class ProfileDto
+    {
+        public string Name { get; set; }
+        public string Email { get; set; }
+        public string? Password { get; set; }
     }
 }

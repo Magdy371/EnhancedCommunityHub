@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Authorization;
 
 namespace CommunityHub.API.Controllers
 {
+#nullable enable
     /*
      * ControllerBase: The UsersController class inherits from ControllerBase, 
      * which is a base class for controllers that handle API requests in ASP.NETCore. 
@@ -27,6 +28,7 @@ namespace CommunityHub.API.Controllers
         private readonly CommunityHubDbContext _context = context;
 
         // GET: api/users
+        #region GetallUserAndSingleUser
         [HttpGet]
         public async Task<IActionResult> GetUsers()
         {
@@ -41,7 +43,8 @@ namespace CommunityHub.API.Controllers
             var user = await _context.Users.FindAsync(id);
             if (user == null) return NotFound();
             return Ok(user);
-        }
+        } 
+        #endregion
 
         // POST: api/users
 
@@ -74,7 +77,6 @@ namespace CommunityHub.API.Controllers
             return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
         }
         #endregion
-
 
         #region Login
         // POST: api/users/auth/login
@@ -111,7 +113,6 @@ namespace CommunityHub.API.Controllers
 
         #endregion
 
-
         // Helper method to generate JWT token
         #region Tokens
         private string GenerateJwtToken(User user)
@@ -125,13 +126,22 @@ namespace CommunityHub.API.Controllers
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey));
             var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
+            // Include the correct claims
             var claims = new[]
             {
                 new Claim(JwtRegisteredClaimNames.Sub, user.Email),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
                 new Claim(ClaimTypes.Name, user.Name),
-                new Claim(ClaimTypes.Role, user.Role)
+                new Claim(ClaimTypes.Role, user.Role),
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()) // Include numeric user ID
             };
+
+            // Log the claims for debugging
+            Console.WriteLine("Claims in Token:");
+            foreach (var claim in claims)
+            {
+                Console.WriteLine($"{claim.Type}: {claim.Value}");
+            }
 
             var token = new JwtSecurityToken(
                 issuer: "https://localhost:7175",
@@ -146,7 +156,7 @@ namespace CommunityHub.API.Controllers
 
         #endregion
 
-
+        #region DeleteAndUpdateUser
         //------------------------------
         //
         // PUT: api/users/{id}
@@ -172,7 +182,83 @@ namespace CommunityHub.API.Controllers
 
             _context.Users.Remove(user);
             await _context.SaveChangesAsync();
+
+             return NoContent();
+        }
+        #endregion
+
+        #region profileSection
+        [Authorize]
+        [HttpGet("profile")]
+        public async Task<IActionResult> GetProfile()
+        {
+            // Filter claims for the correct NameIdentifier value
+            var userIdClaim = User.Claims
+                .Where(c => c.Type == ClaimTypes.NameIdentifier && int.TryParse(c.Value, out _))
+                .Select(c => c.Value)
+                .FirstOrDefault();
+
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
+            {
+                Console.WriteLine($"Invalid or missing user ID claim: {userIdClaim}");
+                return Unauthorized("Invalid or missing user ID in token.");
+            }
+
+            // Find the user by ID in the database
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+            {
+                return NotFound("User not found.");
+            }
+
+            return Ok(new
+            {
+                user.Name,
+                user.Email,
+                user.Role
+            });
+        }
+
+
+        [Authorize]
+        [HttpPut("profile")]
+        public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileRequest updateRequest)
+        {
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                return Unauthorized("User ID not found in token.");
+            }
+
+            var user = await _context.Users.FindAsync(int.Parse(userId));
+            if (user == null)
+            {
+                return NotFound("User not found.");
+            }
+
+            user.Name = updateRequest.Name;
+            user.Email = updateRequest.Email;
+
+            if (!string.IsNullOrEmpty(updateRequest.Password))
+            {
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(updateRequest.Password);
+            }
+
+            _context.Users.Update(user);
+            await _context.SaveChangesAsync();
+
             return NoContent();
         }
+
+        // DTO for update profile
+        public class UpdateProfileRequest
+        {
+            public string Name { get; set; }
+            public string Email { get; set; }
+            public string? Password { get; set; }
+        }
+        #endregion
+
     }
 }
